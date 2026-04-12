@@ -1,10 +1,10 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"] // ✅ needed for PrismaPg adapter
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 model Admin {
@@ -13,56 +13,65 @@ model Admin {
 }
 
 model Student {
-  id          String       @id
-  username    String       @unique
-  name        String
-  surname     String
-  email       String?      @unique
-  phone       String?      @unique
-  address     String
-  img         String?
-  bloodType   String
-  sex         UserSex
-  createdAt   DateTime     @default(now())
-  parentId    String
-  parent      Parent       @relation(fields: [parentId], references: [id])
-  classId     Int
-  class       Class        @relation(fields: [classId], references: [id])
-  gradeId     Int
-  grade       Grade        @relation(fields: [gradeId], references: [id])
-  attendances Attendance[]
-  results     Result[]
-  birthday    DateTime
-}
-
-model Teacher {
-  id        String    @id
-  username  String    @unique
+  id        String   @id
+  username  String   @unique
   name      String
   surname   String
-  email     String?   @unique
-  phone     String?   @unique
+  email     String?  @unique
+  phone     String?  @unique
   address   String
   img       String?
   bloodType String
   sex       UserSex
-  createdAt DateTime  @default(now())
-  subjects  Subject[]
-  lessons   Lesson[]
-  classes   Class[]
+  createdAt DateTime @default(now())
   birthday  DateTime
+
+  parentId String
+  parent   Parent @relation(fields: [parentId], references: [id])
+  classId  Int
+  class    Class  @relation(fields: [classId], references: [id])
+  gradeId  Int
+  grade    Grade  @relation(fields: [gradeId], references: [id])
+
+  attendances Attendance[]
+  results     Result[]
+
+  @@index([parentId]) // ✅ speeds up "students by parent" queries
+  @@index([classId]) // ✅ speeds up "students in class" queries
+  @@index([gradeId])
+}
+
+model Teacher {
+  id        String   @id
+  username  String   @unique
+  name      String
+  surname   String
+  email     String?  @unique
+  phone     String?  @unique
+  address   String
+  img       String?
+  bloodType String
+  sex       UserSex
+  createdAt DateTime @default(now())
+  birthday  DateTime
+
+  subjects Subject[]
+  lessons  Lesson[]
+  classes  Class[]
+  exams     Exam[]
 }
 
 model Parent {
-  id        String    @id
-  username  String    @unique
+  id        String   @id
+  username  String   @unique
   name      String
   surname   String
-  email     String?   @unique
-  phone     String    @unique
+  email     String?  @unique
+  phone     String   @unique
   address   String
-  createdAt DateTime  @default(now())
-  students  Student[]
+  createdAt DateTime @default(now())
+
+  students Student[]
 }
 
 model Grade {
@@ -70,7 +79,7 @@ model Grade {
   level Int @unique
 
   students Student[]
-  classess Class[]
+  classes  Class[] // ✅ fixed typo: was "classess"
 }
 
 model Class {
@@ -78,21 +87,33 @@ model Class {
   name     String @unique
   capacity Int
 
-  supervisorId  String?
-  supervisor    Teacher?       @relation(fields: [supervisorId], references: [id])
+  supervisorId String?
+  supervisor   Teacher? @relation(fields: [supervisorId], references: [id])
+
+  gradeId Int
+  grade   Grade @relation(fields: [gradeId], references: [id])
+
   lessons       Lesson[]
   students      Student[]
-  gradeId       Int
-  grade         Grade          @relation(fields: [gradeId], references: [id])
   events        Event[]
   announcements Announcement[]
+  messages      Message[]
+  exams Exam[]
+
+  @@index([gradeId])
+  @@index([supervisorId])
 }
 
 model Subject {
-  id       Int       @id @default(autoincrement())
-  name     String    @unique
+  id   Int    @id @default(autoincrement())
+  name String @unique
+
   teachers Teacher[]
   lessons  Lesson[]
+  exams  Exam[]
+
+  topics    Topic[]
+  questions Question[]
 }
 
 model Lesson {
@@ -102,42 +123,170 @@ model Lesson {
   startTime DateTime
   endTime   DateTime
 
-  subjectId   Int
-  subject     Subject      @relation(fields: [subjectId], references: [id])
-  classId     Int
-  class       Class        @relation(fields: [classId], references: [id])
-  teacherId   String
-  teacher     Teacher      @relation(fields: [teacherId], references: [id])
+  subjectId Int
+  subject   Subject @relation(fields: [subjectId], references: [id])
+  classId   Int
+  class     Class   @relation(fields: [classId], references: [id])
+  teacherId String
+  teacher   Teacher @relation(fields: [teacherId], references: [id])
+
   exams       Exam[]
   assignments Assignment[]
   attendances Attendance[]
+
+  @@index([teacherId]) // ✅ speeds up "lessons by teacher" queries
+  @@index([classId])
+  @@index([subjectId])
 }
 
 model Exam {
-  id        Int      @id @default(autoincrement())
-  title     String
-  startTime DateTime
-  endTime   DateTime
+  id          Int            @id @default(autoincrement())
+  title       String
+  description String?
+  startTime   DateTime
+  endTime     DateTime
+  duration           Int? 
+  visibility  ExamVisibility @default(PRIVATE)
+  lessonId    Int?
+  lesson      Lesson?         @relation(fields: [lessonId], references: [id])
+  subjectId          Int?     
+  subject            Subject? @relation(fields: [subjectId], references: [id])
+  classId     Int?
+  class       Class?   @relation(fields: [classId], references: [id])
+  questions   ExamQuestion[]
+  resources   ExamResource[]
+  results     Result[]
+  teacherId   String? 
+  teacher     Teacher?  @relation(fields: [teacherId], references: [id])
 
-  lessonId Int
-  lesson   Lesson   @relation(fields: [lessonId], references: [id])
-  results  Result[]
+  requiresProctoring Boolean  @default(false)
+  shuffleQuestions Boolean  @default(true)
+  shuffleChoices   Boolean  @default(true)
+  showResults Boolean @default(false)
+  passingScore       Int              @default(50)
+  maxAttempts        Int              @default(1)
+  isPublic           Boolean          @default(false)
+
+  @@index([lessonId])
+  @@index([visibility])
+}
+
+model Topic {
+  id        Int        @id @default(autoincrement())
+  name      String
+  subjectId Int
+  subject   Subject    @relation(fields: [subjectId], references: [id])
+  subTopics SubTopic[]
+  questions Question[]
+
+  @@index([subjectId])
+}
+
+model SubTopic {
+  id        Int        @id @default(autoincrement())
+  name      String
+  topicId   Int
+  topic     Topic      @relation(fields: [topicId], references: [id])
+  questions Question[]
+
+  @@index([topicId])
+}
+
+model Question {
+  id            Int            @id @default(autoincrement())
+  content       String // markdown supported
+  type          QuestionType
+  marks         Int            @default(1)
+  explanation   String? // markdown — shown after exam
+  imageUrl      String?
+  subjectId     Int
+  subject       Subject        @relation(fields: [subjectId], references: [id])
+  topicId       Int?
+  topic         Topic?         @relation(fields: [topicId], references: [id])
+  subTopicId    Int?
+  subTopic      SubTopic?      @relation(fields: [subTopicId], references: [id])
+  choices       Choice[]
+  examQuestions ExamQuestion[]
+  createdAt     DateTime       @default(now())
+  createdById   String // teacher/admin clerk id
+
+  @@index([subjectId])
+  @@index([topicId])
+  @@index([subTopicId])
+}
+
+model Choice {
+  id         Int      @id @default(autoincrement())
+  content    String // markdown supported
+  isCorrect  Boolean  @default(false)
+  imageUrl   String?
+  questionId Int
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId])
+}
+
+model ExamQuestion {
+  id         Int      @id @default(autoincrement())
+  examId     Int
+  exam       Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  questionId Int
+  question   Question @relation(fields: [questionId], references: [id])
+  order      Int
+  marks      Int // can override question default marks
+
+  @@unique([examId, questionId])
+  @@index([examId])
+}
+
+model ExamResource {
+  id        Int      @id @default(autoincrement())
+  examId    Int
+  exam      Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  name      String
+  url       String
+  type      String // 'pdf' | 'docx' | 'pptx' | 'image' | 'video'
+  size      Int // bytes
+  createdAt DateTime @default(now())
+
+  @@index([examId])
+}
+
+enum QuestionType {
+  MULTIPLE_CHOICE
+  MULTIPLE_SELECT
+  TRUE_FALSE
+  SHORT_ANSWER
+  LONG_ANSWER
+  FILL_BLANK
+  MATCHING
+}
+
+enum ExamVisibility {
+  PRIVATE
+  PUBLIC
+  CLASS_ONLY
 }
 
 model Assignment {
   id        Int      @id @default(autoincrement())
   title     String
-  startDate DateTime
+  startDate DateTime @default(now())
   dueDate   DateTime
 
   lessonId Int
-  lesson   Lesson   @relation(fields: [lessonId], references: [id])
-  results  Result[]
+  lesson   Lesson @relation(fields: [lessonId], references: [id])
+
+  results Result[]
+
+  @@index([lessonId])
 }
 
 model Result {
   id    Int @id @default(autoincrement())
   score Int
+  createdAt DateTime @default(now())
+  remarks  String?
 
   examId       Int?
   exam         Exam?       @relation(fields: [examId], references: [id])
@@ -145,6 +294,10 @@ model Result {
   assignment   Assignment? @relation(fields: [assignmentId], references: [id])
   studentId    String
   student      Student     @relation(fields: [studentId], references: [id])
+
+  @@index([studentId])
+  @@index([examId])
+  @@index([assignmentId])
 }
 
 model Attendance {
@@ -156,6 +309,10 @@ model Attendance {
   student   Student @relation(fields: [studentId], references: [id])
   lessonId  Int
   lesson    Lesson  @relation(fields: [lessonId], references: [id])
+
+  @@index([studentId])
+  @@index([lessonId])
+  @@index([date]) // ✅ speeds up date-range attendance queries
 }
 
 model Event {
@@ -167,6 +324,8 @@ model Event {
 
   classId Int?
   class   Class? @relation(fields: [classId], references: [id])
+
+  @@index([classId])
 }
 
 model Announcement {
@@ -177,6 +336,25 @@ model Announcement {
 
   classId Int?
   class   Class? @relation(fields: [classId], references: [id])
+
+  @@index([classId])
+  @@index([date])
+}
+
+model Message {
+  id        Int      @id @default(autoincrement())
+  text      String
+  createdAt DateTime @default(now())
+
+  senderId String
+
+  receiverId String
+
+  classId Int?
+  class   Class? @relation(fields: [classId], references: [id])
+
+  @@index([senderId])
+  @@index([receiverId])
 }
 
 enum UserSex {

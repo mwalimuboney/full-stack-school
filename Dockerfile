@@ -1,26 +1,32 @@
-# Use Node.js as the base image
-FROM node:18
+# 1. Use Node 20 or higher for Next.js 16 compatibility
+FROM node:20-slim AS base
 
-# Set the working directory inside the container
+# Install OpenSSL (Required by Prisma)
+RUN apt-get update -y && apt-get install -y openssl
+
 WORKDIR /app
 
-# Copy package.json and package-lock.json files
+# 2. Install dependencies
 COPY package*.json ./
+# Use legacy-peer-deps to handle any version mismatches in the template
+RUN npm install --legacy-peer-deps
 
-# Install dependencies
-RUN npm install
-
-# Copy the rest of the application code
+# 3. Copy source code
 COPY . .
 
-# Generate Database
-RUN npx prisma migrate dev --name init
+# 4. Generate Prisma Client
+# This must happen BEFORE the build so the types are available
+RUN npx prisma generate
 
-# Build the Next.js application
-RUN npm run build
+# 5. Build the application
+# RUN npm run build
 
-# Expose the port the app runs on
+# 6. Set Environment to Production
+# ENV NODE_ENV=production
+
 EXPOSE 3000
 
-# Start the Next.js application
-CMD ["npm", "start"]
+# 7. Start Command
+# We don't run migrations in the BUILD step. We run them when the container STARTS.
+# CMD npx prisma db push && npm start
+CMD ["npm", "run", "dev"]

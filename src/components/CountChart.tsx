@@ -7,6 +7,10 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
+interface CountChartProps {
+  boys?: number;
+  girls?: number;
+}
 
 const CountChart = ({ boys, girls }: { boys: number; girls: number }) => {
   const data = [
@@ -18,12 +22,12 @@ const CountChart = ({ boys, girls }: { boys: number; girls: number }) => {
     {
       name: "Girls",
       count: girls,
-      fill: "#FAE27C",
+      fill: "#04ce0e",
     },
     {
       name: "Boys",
       count: boys,
-      fill: "#C3EBFA",
+      fill: "#0820f5",
     },
   ];
   return (

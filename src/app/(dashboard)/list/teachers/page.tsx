@@ -14,15 +14,17 @@ type TeacherList = Teacher & { subjects: Subject[] } & { classes: Class[] };
 const TeacherListPage = async ({
   searchParams,
 }: {
-  searchParams: { [key: string]: string | undefined };
+  searchParams: Promise<{ [key: string]: string | undefined }>; // ✅ Now a Promise in Next.js 15
 }) => {
-  const { sessionClaims } = auth();
+  const { sessionClaims } = await auth();
   const role = (sessionClaims?.metadata as { role?: string })?.role;
+
+  const resolvedParams = await searchParams; // ✅ Must await
+  const { page, ...queryParams } = resolvedParams;
+  const p = page ? parseInt(page) : 1;
+
   const columns = [
-    {
-      header: "Info",
-      accessor: "info",
-    },
+    { header: "Info", accessor: "info" },
     {
       header: "Teacher ID",
       accessor: "teacherId",
@@ -49,12 +51,7 @@ const TeacherListPage = async ({
       className: "hidden lg:table-cell",
     },
     ...(role === "admin"
-      ? [
-          {
-            header: "Actions",
-            accessor: "action",
-          },
-        ]
+      ? [{ header: "Actions", accessor: "action" }]
       : []),
   ];
 
@@ -72,16 +69,16 @@ const TeacherListPage = async ({
           className="md:hidden xl:block w-10 h-10 rounded-full object-cover"
         />
         <div className="flex flex-col">
-          <h3 className="font-semibold">{item.name}</h3>
+          <h3 className="font-semibold">{item.name} {item.surname}</h3>
           <p className="text-xs text-gray-500">{item?.email}</p>
         </div>
       </td>
       <td className="hidden md:table-cell">{item.username}</td>
       <td className="hidden md:table-cell">
-        {item.subjects.map((subject) => subject.name).join(",")}
+        {item.subjects.map((s) => s.name).join(", ")}
       </td>
       <td className="hidden md:table-cell">
-        {item.classes.map((classItem) => classItem.name).join(",")}
+        {item.classes.map((c) => c.name).join(", ")}
       </td>
       <td className="hidden md:table-cell">{item.phone}</td>
       <td className="hidden md:table-cell">{item.address}</td>
@@ -93,53 +90,64 @@ const TeacherListPage = async ({
             </button>
           </Link>
           {role === "admin" && (
-            // <button className="w-7 h-7 flex items-center justify-center rounded-full bg-lamaPurple">
-            //   <Image src="/delete.png" alt="" width={16} height={16} />
-            // </button>
             <FormContainer table="teacher" type="delete" id={item.id} />
           )}
         </div>
       </td>
     </tr>
   );
-  const { page, ...queryParams } = searchParams;
 
-  const p = page ? parseInt(page) : 1;
-
-  // URL PARAMS CONDITION
-
+  // ── Build query ────────────────────────────────────────────────────
   const query: Prisma.TeacherWhereInput = {};
 
-  if (queryParams) {
-    for (const [key, value] of Object.entries(queryParams)) {
-      if (value !== undefined) {
-        switch (key) {
-          case "classId":
-            query.lessons = {
-              some: {
-                classId: parseInt(value),
-              },
-            };
-            break;
-          case "search":
-            query.name = { contains: value, mode: "insensitive" };
-            break;
-          default:
-            break;
-        }
-      }
+  for (const [key, value] of Object.entries(queryParams)) {
+    if (!value) continue;
+
+    switch (key) {
+      case "classId":
+        query.lessons = {
+          some: { classId: parseInt(value) },
+        };
+        break;
+
+      case "search":
+        // ✅ Search across name, surname, username, email — not just name
+        query.OR = [
+          { name: { contains: value, mode: "insensitive" } },
+          { surname: { contains: value, mode: "insensitive" } },
+          { username: { contains: value, mode: "insensitive" } },
+          { email: { contains: value, mode: "insensitive" } },
+        ];
+        break;
+
+      default:
+        break;
     }
   }
 
+  // ── Fetch data ─────────────────────────────────────────────────────
   const [data, count] = await prisma.$transaction([
     prisma.teacher.findMany({
       where: query,
-      include: {
-        subjects: true,
-        classes: true,
+      select: {
+        id: true,
+        username: true,
+        name: true,
+        surname: true,
+        email: true,
+        phone: true,
+        address: true,
+        img: true,
+        bloodType: true,
+        sex: true,
+        birthday: true,
+        createdAt: true,
+        subjects: { select: { id: true, name: true } },
+        classes: { select: { id: true, name: true } },
       },
       take: ITEM_PER_PAGE,
       skip: ITEM_PER_PAGE * (p - 1),
+      orderBy: { name: "asc" },
     }),
     prisma.teacher.count({ where: query }),
   ]);

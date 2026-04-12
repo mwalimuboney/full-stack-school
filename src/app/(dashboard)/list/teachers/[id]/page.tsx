@@ -1,30 +1,40 @@
 import Announcements from "@/components/Announcements";
 import BigCalendarContainer from "@/components/BigCalendarContainer";
-import BigCalendar from "@/components/BigCalender";
 import FormContainer from "@/components/FormContainer";
 import Performance from "@/components/Performance";
 import prisma from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
-import { Teacher } from "@prisma/client";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
 const SingleTeacherPage = async ({
-  params: { id },
+  params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) => {
-  const { sessionClaims } = auth();
+  const [{ id }, { sessionClaims }] = await Promise.all([
+    params,
+    auth(),
+  ]);
+
   const role = (sessionClaims?.metadata as { role?: string })?.role;
 
-  const teacher:
-    | (Teacher & {
-        _count: { subjects: number; lessons: number; classes: number };
-      })
-    | null = await prisma.teacher.findUnique({
+  // ── Single query fetches everything needed ─────────────────────────
+  const teacher = await prisma.teacher.findUnique({
     where: { id },
-    include: {
+    select: {
+      id: true,
+      name: true,
+      surname: true,
+      email: true,
+      phone: true,
+      address: true,
+      img: true,
+      bloodType: true,
+      birthday: true,
+      sex: true,
+      username: true,
       _count: {
         select: {
           subjects: true,
@@ -32,12 +42,29 @@ const SingleTeacherPage = async ({
           classes: true,
         },
       },
+      // ✅ Count attendance in same query — no second DB round trip
+      lessons: {
+        select: {
+          attendances: {
+            select: {
+              present: true, // only fetch what we need
+            },
+          },
+        },
+      },
     },
   });
 
-  if (!teacher) {
-    return notFound();
-  }
+  if (!teacher) return notFound();
+
+  // ── Compute attendance from included data ──────────────────────────
+  const allAttendance = teacher.lessons.flatMap((l) => l.attendances);
+  const totalAttendance = allAttendance.length;
+  const presentCount = allAttendance.filter((a) => a.present).length;
+  const attendancePercentage = totalAttendance
+    ? Math.round((presentCount / totalAttendance) * 100)
+    : 100;
+
   return (
     <div className="flex-1 p-4 flex flex-col gap-4 xl:flex-row">
       {/* LEFT */}
@@ -49,7 +76,7 @@ const SingleTeacherPage = async ({
             <div className="w-1/3">
               <Image
                 src={teacher.img || "/noAvatar.png"}
-                alt=""
+                alt={`${teacher.name} ${teacher.surname}`}
                 width={144}
                 height={144}
                 className="w-36 h-36 rounded-full object-cover"
@@ -58,14 +85,16 @@ const SingleTeacherPage = async ({
             <div className="w-2/3 flex flex-col justify-between gap-4">
               <div className="flex items-center gap-4">
                 <h1 className="text-xl font-semibold">
-                  {teacher.name + " " + teacher.surname}
+                  {teacher.name} {teacher.surname}
                 </h1>
                 {role === "admin" && (
                   <FormContainer table="teacher" type="update" data={teacher} />
                 )}
               </div>
               <p className="text-sm text-gray-500">
-                Lorem ipsum, dolor sit amet consectetur adipisicing elit.
+                Currently managing {teacher._count.classes} classes and{" "}
+                {teacher._count.lessons} lessons across{" "}
+                {teacher._count.subjects} subjects.
               </p>
               <div className="flex items-center justify-between gap-2 flex-wrap text-xs font-medium">
                 <div className="w-full md:w-1/3 lg:w-full 2xl:w-1/3 flex items-center gap-2">
@@ -89,9 +118,10 @@ const SingleTeacherPage = async ({
               </div>
             </div>
           </div>
+
           {/* SMALL CARDS */}
           <div className="flex-1 flex gap-4 justify-between flex-wrap">
-            {/* CARD */}
+            {/* Attendance */}
             <div className="bg-white p-4 rounded-md flex gap-4 w-full md:w-[48%] xl:w-[45%] 2xl:w-[48%]">
               <Image
                 src="/singleAttendance.png"
@@ -100,12 +130,14 @@ const SingleTeacherPage = async ({
                 height={24}
                 className="w-6 h-6"
               />
-              <div className="">
-                <h1 className="text-xl font-semibold">90%</h1>
-                <span className="text-sm text-gray-400">Attendance</span>
+              <div>
+                <h1 className="text-xl font-semibold">
+                  {attendancePercentage}%
+                </h1>
+                <span className="text-sm text-gray-400">Attendance Rate</span>
               </div>
             </div>
-            {/* CARD */}
+            {/* Subjects */}
             <div className="bg-white p-4 rounded-md flex gap-4 w-full md:w-[48%] xl:w-[45%] 2xl:w-[48%]">
               <Image
                 src="/singleBranch.png"
@@ -114,14 +146,14 @@ const SingleTeacherPage = async ({
                 height={24}
                 className="w-6 h-6"
               />
-              <div className="">
+              <div>
                 <h1 className="text-xl font-semibold">
                   {teacher._count.subjects}
                 </h1>
-                <span className="text-sm text-gray-400">Branches</span>
+                <span className="text-sm text-gray-400">Subjects</span>
               </div>
             </div>
-            {/* CARD */}
+            {/* Lessons */}
             <div className="bg-white p-4 rounded-md flex gap-4 w-full md:w-[48%] xl:w-[45%] 2xl:w-[48%]">
               <Image
                 src="/singleLesson.png"
@@ -130,14 +162,14 @@ const SingleTeacherPage = async ({
                 height={24}
                 className="w-6 h-6"
               />
-              <div className="">
+              <div>
                 <h1 className="text-xl font-semibold">
                   {teacher._count.lessons}
                 </h1>
                 <span className="text-sm text-gray-400">Lessons</span>
               </div>
             </div>
-            {/* CARD */}
+            {/* Classes */}
             <div className="bg-white p-4 rounded-md flex gap-4 w-full md:w-[48%] xl:w-[45%] 2xl:w-[48%]">
               <Image
                 src="/singleClass.png"
@@ -146,7 +178,7 @@ const SingleTeacherPage = async ({
                 height={24}
                 className="w-6 h-6"
               />
-              <div className="">
+              <div>
                 <h1 className="text-xl font-semibold">
                   {teacher._count.classes}
                 </h1>
@@ -155,43 +187,45 @@ const SingleTeacherPage = async ({
             </div>
           </div>
         </div>
-        {/* BOTTOM */}
+
+        {/* SCHEDULE */}
         <div className="mt-4 bg-white rounded-md p-4 h-[800px]">
-          <h1>Teacher&apos;s Schedule</h1>
+          <h1 className="font-semibold mb-4">Teacher&apos;s Schedule</h1>
           <BigCalendarContainer type="teacherId" id={teacher.id} />
         </div>
       </div>
+
       {/* RIGHT */}
       <div className="w-full xl:w-1/3 flex flex-col gap-4">
         <div className="bg-white p-4 rounded-md">
           <h1 className="text-xl font-semibold">Shortcuts</h1>
           <div className="mt-4 flex gap-4 flex-wrap text-xs text-gray-500">
-           <Link
-              className="p-3 rounded-md bg-lamaSkyLight"
+            <Link
+              className="p-3 rounded-md bg-lamaSkyLight hover:opacity-80 transition"
               href={`/list/classes?supervisorId=${teacher.id}`}
             >
               Teacher&apos;s Classes
             </Link>
             <Link
-              className="p-3 rounded-md bg-lamaPurpleLight"
+              className="p-3 rounded-md bg-lamaPurpleLight hover:opacity-80 transition"
               href={`/list/students?teacherId=${teacher.id}`}
             >
               Teacher&apos;s Students
             </Link>
             <Link
-              className="p-3 rounded-md bg-lamaYellowLight"
+              className="p-3 rounded-md bg-lamaYellowLight hover:opacity-80 transition"
               href={`/list/lessons?teacherId=${teacher.id}`}
             >
               Teacher&apos;s Lessons
             </Link>
             <Link
-              className="p-3 rounded-md bg-pink-50"
+              className="p-3 rounded-md bg-pink-50 hover:opacity-80 transition"
               href={`/list/exams?teacherId=${teacher.id}`}
             >
               Teacher&apos;s Exams
             </Link>
             <Link
-              className="p-3 rounded-md bg-lamaSkyLight"
+              className="p-3 rounded-md bg-green-50 hover:opacity-80 transition"
               href={`/list/assignments?teacherId=${teacher.id}`}
             >
               Teacher&apos;s Assignments

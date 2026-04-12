@@ -6,13 +6,17 @@ import prisma from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
 
 const StudentPage = async () => {
-  const { userId } = auth();
+  const { userId } = await auth();
 
   const classItem = await prisma.class.findMany({
     where: {
       students: { some: { id: userId! } },
     },
   });
+
+  if (classItem.length === 0) {
+    return <div className="p-4">No class schedule found. Please contact the administrator.</div>;
+  }
 
   console.log(classItem);
   return (

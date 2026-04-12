@@ -8,6 +8,7 @@ import { Prisma } from "@prisma/client";
 import Image from "next/image";
 
 import { auth } from "@clerk/nextjs/server";
+import Link from "next/dist/client/link";
 
 type ResultList = {
   id: number;
@@ -28,7 +29,7 @@ const ResultListPage = async ({
   searchParams: { [key: string]: string | undefined };
 }) => {
 
-const { userId, sessionClaims } = auth();
+const { userId, sessionClaims } = await auth();
 const role = (sessionClaims?.metadata as { role?: string })?.role;
 const currentUserId = userId;
 
@@ -89,6 +90,11 @@ const renderRow = (item: ResultList) => (
     </td>
     <td>
       <div className="flex items-center gap-2">
+        <Link href={`/list/results/${item.id}`}>
+          <button className="px-3 py-1 bg-lamaSky text-gray-700 rounded-md text-xs font-bold hover:bg-opacity-80 transition-colors">
+            View
+          </button>
+        </Link>
         {(role === "admin" || role === "teacher") && (
           <>
             <FormContainer table="result" type="update" data={item} />
@@ -197,10 +203,10 @@ const renderRow = (item: ResultList) => (
       title: assessment.title,
       studentName: item.student.name,
       studentSurname: item.student.surname,
-      teacherName: assessment.lesson.teacher.name,
-      teacherSurname: assessment.lesson.teacher.surname,
+      teacherName: assessment.lesson?.teacher.name,
+      teacherSurname: assessment.lesson?.teacher.surname,
       score: item.score,
-      className: assessment.lesson.class.name,
+      className: assessment.lesson?.class.name,
       startTime: isExam ? assessment.startTime : assessment.startDate,
     };
   });
@@ -227,6 +233,7 @@ const renderRow = (item: ResultList) => (
       </div>
       {/* LIST */}
       <Table columns={columns} renderRow={renderRow} data={data} />
+      
       {/* PAGINATION */}
       <Pagination page={p} count={count} />
     </div>

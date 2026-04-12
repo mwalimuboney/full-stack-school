@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+.body {
+  background: green;
+}
+
 .react-calendar {
   width: 100% !important;
   border: none !important;
@@ -13,7 +17,7 @@
 }
 
 .react-calendar__tile--active {
-  background-color: #c3ebfa !important;
+  background-color: #4aca8a !important;
   color: black !important;
 }
 
@@ -32,17 +36,17 @@
 
 .rbc-btn-group:last-child button {
   border: none !important;
-  background-color: #f1f0ff !important;
+  background-color: #1607e9 !important;
   margin-left: 2px !important;
 }
 
 .rbc-toolbar button.rbc-active {
-  background-color: #dbdafe !important;
+  background-color: #0a04b1 !important;
   box-shadow: none !important;
 }
 
 .rbc-time-view {
-  border-color: #eee !important;
+  border-color: #32eb04 !important;
 }
 
 .rbc-time-header {
@@ -62,7 +66,7 @@
 }
 
 .rbc-timeslot-group {
-  background-color: #f7fdff !important;
+  background-color: rgb(148, 159, 163) !important;
 }
 
 .rbc-day-slot {
@@ -78,7 +82,7 @@
 }
 
 .rbc-event:nth-child(1) {
-  background-color: #e2f8ff !important;
+  background-color: #bfcace !important;
 }
 .rbc-event:nth-child(2) {
   background-color: #fefce8 !important;
@@ -90,19 +94,19 @@
   background-color: #fdf2fb !important;
 }
 .rbc-event:nth-child(5) {
-  background-color: #e2f8ff !important;
+  background-color: #c0c9cc !important;
 }
 .rbc-event:nth-child(6) {
-  background-color: #fefce8 !important;
+  background-color: #d1d1ca !important;
 }
 .rbc-event:nth-child(7) {
-  background-color: #f2f1ff !important;
+  background-color: #b9b7d6 !important;
 }
 .rbc-event:nth-child(8) {
-  background-color: #fdf2fb !important;
+  background-color: #afa2ad !important;
 }
 
 .rbc-event-label{
-  color: gray !important;
+  color: rgb(8, 1, 1)!important;
   margin-bottom: 5px;
 }

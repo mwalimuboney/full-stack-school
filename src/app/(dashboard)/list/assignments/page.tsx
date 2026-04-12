@@ -19,12 +19,23 @@ type AssignmentList = Assignment & {
 const AssignmentListPage = async ({
   searchParams,
 }: {
-  searchParams: { [key: string]: string | undefined };
+  searchParams: Promise<{ [key: string]: string | undefined }>;
 }) => {
 
-  const { userId, sessionClaims } = auth();
+  const resolvedSearchParams = await searchParams;
+
+
+  const { userId, sessionClaims } = await auth();
   const role = (sessionClaims?.metadata as { role?: string })?.role;
   const currentUserId = userId;
+
+  const lessons = await prisma.lesson.findMany({
+    select: {
+      id: true,
+      subject: { select: { name: true } },
+      class: { select: { name: true } },
+    },
+  });
   
   
   const columns = [
@@ -73,7 +84,7 @@ const AssignmentListPage = async ({
         <div className="flex items-center gap-2">
           {(role === "admin" || role === "teacher") && (
             <>
-              <FormModal table="assignment" type="update" data={item} />
+              <FormModal table="assignment" type="update" data={item} relatedData={{ lessons }} />
               <FormModal table="assignment" type="delete" id={item.id} />
             </>
           )}
@@ -82,7 +93,7 @@ const AssignmentListPage = async ({
     </tr>
   );
 
-  const { page, ...queryParams } = searchParams;
+  const { page, ...queryParams } = resolvedSearchParams;
 
   const p = page ? parseInt(page) : 1;
 
@@ -179,7 +190,7 @@ const AssignmentListPage = async ({
             </button>
             {role === "admin" ||
               (role === "teacher" && (
-                <FormModal table="assignment" type="create" />
+                <FormModal table="assignment" type="create" relatedData={{ lessons }} />
               ))}
           </div>
         </div>
