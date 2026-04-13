@@ -1,6 +1,7 @@
 "use server";
-
+import { uploadWithFallback, detectFileType, isYouTubeUrl } from "./storage";
 import { revalidatePath } from "next/cache";
+
 import {
   ClassSchema,
   ExamSchema,
@@ -76,6 +77,431 @@ export type AIExamAnalysisResult = {
     suggested: string;
     reason: string;
   }[];
+};
+
+
+
+export type NoteInput = {
+  title: string;
+  description?: string;
+  subjectId: number;
+  classId?: number;
+  isPublic: boolean;
+  tags: string[];
+  // For file upload
+  fileBase64?: string;
+  fileName?: string;
+  fileMimeType?: string;
+  fileSize?: number;
+  // For external URL (YouTube, Google Drive)
+  externalUrl?: string;
+  sourceId?: number;
+};
+
+export const createNoteAction = async (data: NoteInput) => {
+  const { userId, sessionClaims } = await auth();
+  if (!userId) return { success: false, error: "Unauthorized" };
+
+  const role = (sessionClaims?.metadata as { role?: string })?.role;
+  if (!["admin", "teacher"].includes(role ?? "")) {
+    return { success: false, error: "Forbidden" };
+  }
+
+  try {
+    let fileUrl = "";
+    let fileType = "file";
+    let sourceId: number | undefined;
+    let fileSize: number | undefined;
+    let thumbnailUrl: string | undefined;
+
+    if (data.externalUrl) {
+      // YouTube or external Google Drive link
+      fileUrl = data.externalUrl;
+      fileType = isYouTubeUrl(data.externalUrl) ? "youtube" : "external";
+      // For YouTube, generate thumbnail
+      if (fileType === "youtube") {
+        const ytId = data.externalUrl.match(
+          /(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/
+        )?.[1];
+        if (ytId) thumbnailUrl = `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`;
+      }
+    } else if (data.fileBase64 && data.fileName && data.fileMimeType) {
+      // File upload with storage fallback
+      const buffer = Buffer.from(data.fileBase64, "base64");
+      const result = await uploadWithFallback(
+        buffer,
+        data.fileName,
+        data.fileMimeType,
+        data.fileSize ?? buffer.length
+      );
+      fileUrl = result.url;
+      fileType = detectFileType(data.fileMimeType);
+      sourceId = result.sourceId;
+      fileSize = result.fileSize;
+    } else {
+      return { success: false, error: "No file or URL provided" };
+    }
+
+    const note = await prisma.note.create({
+      data: {
+        title: data.title,
+        description: data.description ?? null,
+        fileUrl,
+        fileType,
+        thumbnailUrl: thumbnailUrl ?? null,
+        fileSize: fileSize ? BigInt(fileSize) : null,
+        tags: data.tags,
+        isPublic: data.isPublic,
+        subjectId: data.subjectId,
+        classId: data.classId ?? null,
+        teacherId: userId,
+        sourceId: sourceId ?? null,
+      },
+    });
+
+    revalidatePath("/list/notes");
+    return { success: true, data: note };
+  } catch (err) {
+    console.error("[createNoteAction]", err);
+    return { success: false, error: "Failed to create note" };
+  }
+};
+
+export const updateNoteAction = async (id: number, data: Partial<NoteInput>) => {
+  const { userId, sessionClaims } = await auth();
+  if (!userId) return { success: false, error: "Unauthorized" };
+
+  const role = (sessionClaims?.metadata as { role?: string })?.role;
+  if (!["admin", "teacher"].includes(role ?? "")) {
+    return { success: false, error: "Forbidden" };
+  }
+
+  // Teachers can only update their own notes
+  if (role === "teacher") {
+    const existing = await prisma.note.findUnique({ where: { id } });
+    if (!existing || existing.teacherId !== userId) {
+      return { success: false, error: "You can only edit your own notes" };
+    }
+  }
+
+  try {
+    const note = await prisma.note.update({
+      where: { id },
+      data: {
+        ...(data.title && { title: data.title }),
+        ...(data.description !== undefined && { description: data.description }),
+        ...(data.isPublic !== undefined && { isPublic: data.isPublic }),
+        ...(data.tags && { tags: data.tags }),
+        ...(data.classId !== undefined && { classId: data.classId }),
+      },
+    });
+
+    revalidatePath("/list/notes");
+    return { success: true, data: note };
+  } catch (err) {
+    console.error("[updateNoteAction]", err);
+    return { success: false, error: "Failed to update note" };
+  }
+};
+
+export const deleteNoteAction = async (
+  currentState: CurrentState,
+  data: FormData
+) => {
+  const id = data.get("id") as string;
+  const { userId, sessionClaims } = await auth();
+
+  // Only admins can delete
+  const role = (sessionClaims?.metadata as { role?: string })?.role;
+  if (role !== "admin") {
+    return { success: false, error: true };
+  }
+
+  try {
+    const note = await prisma.note.findUnique({
+      where: { id: parseInt(id) },
+      include: { source: true },
+    });
+    if (!note) return { success: false, error: true };
+
+    await prisma.note.delete({ where: { id: parseInt(id) } });
+
+    // Update source used bytes
+    if (note.sourceId && note.fileSize) {
+      await prisma.noteSource.update({
+        where: { id: note.sourceId },
+        data: { usedBytes: { decrement: note.fileSize } },
+      });
+    }
+
+    revalidatePath("/list/notes");
+    return { success: true, error: false };
+  } catch (err) {
+    console.error("[deleteNoteAction]", err);
+    return { success: false, error: true };
+  }
+};
+
+export const getNotesAction = async (filters: {
+  subjectId?: number;
+  classId?: number;
+  fileType?: string;
+  search?: string;
+  isPublic?: boolean;
+  page?: number;
+  limit?: number;
+}) => {
+  const { userId, sessionClaims } = await auth();
+  if (!userId) return { success: false, error: "Unauthorized" };
+
+  const role = (sessionClaims?.metadata as { role?: string })?.role;
+  const { subjectId, classId, fileType, search, page = 1, limit = 20 } = filters;
+
+  const where: any = {};
+
+  // Role-based visibility
+  if (role === "student") {
+    where.OR = [{ isPublic: true }, { classId: { not: null } }];
+  } else if (role === "teacher") {
+    where.OR = [{ isPublic: true }, { teacherId: userId }];
+  }
+  // admin sees everything
+
+  if (subjectId) where.subjectId = subjectId;
+  if (classId) where.classId = classId;
+  if (fileType) where.fileType = fileType;
+  if (search) {
+    where.AND = [
+      {
+        OR: [
+          { title: { contains: search, mode: "insensitive" } },
+          { description: { contains: search, mode: "insensitive" } },
+          { tags: { has: search.toLowerCase() } },
+        ],
+      },
+    ];
+  }
+
+  try {
+    const [notes, count] = await Promise.all([
+      prisma.note.findMany({
+        where,
+        include: {
+          subject: { select: { name: true } },
+          class: { select: { name: true } },
+          teacher: { select: { name: true, surname: true } },
+          aiSummary: { select: { difficulty: true, estimatedReadTime: true } },
+          _count: { select: { completedBy: true } },
+        },
+        take: limit,
+        skip: limit * (page - 1),
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.note.count({ where }),
+    ]);
+
+    // Serialize BigInt
+    const serialized = notes.map((n) => ({
+      ...n,
+      fileSize: n.fileSize ? Number(n.fileSize) : null,
+    }));
+
+    return { success: true, notes: serialized, count };
+  } catch (err) {
+    console.error("[getNotesAction]", err);
+    return { success: false, error: "Failed to fetch notes" };
+  }
+};
+
+export const getNoteByIdAction = async (id: number) => {
+  const { userId, sessionClaims } = await auth();
+  if (!userId) return { success: false, error: "Unauthorized" };
+
+  const role = (sessionClaims?.metadata as { role?: string })?.role;
+
+  const note = await prisma.note.findUnique({
+    where: { id },
+    include: {
+      subject: true,
+      class: true,
+      teacher: { select: { name: true, surname: true, img: true } },
+      aiSummary: true,
+      source: { select: { name: true, type: true } },
+      _count: { select: { completedBy: true } },
+    },
+  });
+
+  if (!note) return { success: false, error: "Not found" };
+
+  // Access control
+  if (role === "student" && !note.isPublic) {
+    const student = await prisma.student.findFirst({
+      where: { id: userId, classId: note.classId ?? -1 },
+    });
+    if (!student) return { success: false, error: "Access denied" };
+  }
+
+  // Increment view count
+  await prisma.note.update({
+    where: { id },
+    data: { viewCount: { increment: 1 } },
+  });
+
+  return {
+    success: true,
+    note: { ...note, fileSize: note.fileSize ? Number(note.fileSize) : null },
+  };
+};
+
+// Track learning progress
+export const updateProgressAction = async (
+  noteId: number,
+  progress: number,        // 0-100
+  timeSpentSeconds: number
+) => {
+  const { userId } = await auth();
+  if (!userId) return { success: false, error: "Unauthorized" };
+
+  try {
+    const updated = await prisma.userProgress.upsert({
+      where: { userId_noteId: { userId, noteId } },
+      create: {
+        userId,
+        noteId,
+        progress,
+        timeSpent: timeSpentSeconds,
+        isLearned: progress >= 90,
+        sessionCount: 1,
+        lastRead: new Date(),
+      },
+      update: {
+        progress: { set: progress },
+        timeSpent: { increment: timeSpentSeconds },
+        isLearned: progress >= 90,
+        sessionCount: { increment: 1 },
+        lastRead: new Date(),
+      },
+    });
+    return { success: true, data: updated };
+  } catch (err) {
+    return { success: false, error: "Failed to update progress" };
+  }
+};
+
+// Generate AI summary for a note
+export const generateAISummaryAction = async (noteId: number, noteTitle: string, noteDescription: string) => {
+  const { userId } = await auth();
+  if (!userId) return { success: false, error: "Unauthorized" };
+
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return { success: false, error: "AI not configured" };
+
+  // Check if summary already exists and is fresh (< 7 days)
+  const existing = await prisma.noteAISummary.findUnique({ where: { noteId } });
+  if (existing) {
+    const ageMs = Date.now() - existing.generatedAt.getTime();
+    const ageDays = ageMs / (1000 * 60 * 60 * 24);
+    if (ageDays < 7) {
+      return { success: true, data: existing, cached: true };
+    }
+  }
+
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001", // cheapest model to preserve tier
+        max_tokens: 400,
+        messages: [
+          {
+            role: "user",
+            content: `Summarize this educational note for students. Return ONLY valid JSON, no markdown.
+
+Title: ${noteTitle}
+Description: ${noteDescription || "No description"}
+
+Return:
+{
+  "summary": "2-3 sentence summary",
+  "keyPoints": ["point 1", "point 2", "point 3"],
+  "difficulty": "beginner|intermediate|advanced",
+  "estimatedReadTime": 5
+}`,
+          },
+        ],
+      }),
+    });
+
+    if (response.status === 429) {
+      return { success: false, error: "AI rate limit reached" };
+    }
+    if (!response.ok) {
+      return { success: false, error: "AI unavailable" };
+    }
+
+    const data = await response.json();
+    const text = data.content?.[0]?.text ?? "{}";
+    const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
+
+    const summary = await prisma.noteAISummary.upsert({
+      where: { noteId },
+      create: {
+        noteId,
+        summary: parsed.summary,
+        keyPoints: parsed.keyPoints ?? [],
+        difficulty: parsed.difficulty ?? "intermediate",
+        estimatedReadTime: parsed.estimatedReadTime ?? 5,
+        model: "claude-haiku-4-5-20251001",
+      },
+      update: {
+        summary: parsed.summary,
+        keyPoints: parsed.keyPoints ?? [],
+        difficulty: parsed.difficulty ?? "intermediate",
+        estimatedReadTime: parsed.estimatedReadTime ?? 5,
+        generatedAt: new Date(),
+      },
+    });
+
+    return { success: true, data: summary };
+  } catch (err) {
+    console.error("[generateAISummaryAction]", err);
+    return { success: false, error: "AI summary failed" };
+  }
+};
+
+// Admin: manage external sources
+export const createNoteSourceAction = async (data: {
+  name: string;
+  type: string;
+  config: Record<string, string>;
+  maxBytes?: number;
+  priority?: number;
+}) => {
+  const { userId, sessionClaims } = await auth();
+  if (!userId) return { success: false, error: "Unauthorized" };
+
+  const role = (sessionClaims?.metadata as { role?: string })?.role;
+  if (role !== "admin") return { success: false, error: "Admin only" };
+
+  try {
+    const source = await prisma.noteSource.create({
+      data: {
+        name: data.name,
+        type: data.type as any,
+        config: data.config,
+        maxBytes: data.maxBytes ? BigInt(data.maxBytes) : null,
+        priority: data.priority ?? 0,
+      },
+    });
+    return { success: true, data: { ...source, maxBytes: source.maxBytes ? Number(source.maxBytes) : null, usedBytes: Number(source.usedBytes) } };
+  } catch (err) {
+    return { success: false, error: "Failed to create source" };
+  }
 };
 
 export const analyzeExamAI = async (context: {

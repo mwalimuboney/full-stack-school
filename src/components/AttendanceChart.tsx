@@ -1,5 +1,6 @@
 "use client";
 import Image from "next/image";
+import { useEffect } from "react";
 import {
   BarChart,
   Bar,
@@ -16,21 +17,25 @@ interface AttendanceChartProps {
   data?: { name: string; present: number; absent: number }[];
 }
 
+ 
 const AttendanceChart = ({
   data,
 }: {
   data: { name: string; present: number; absent: number }[];
 }) => {
 
-  
-  if (typeof window !== "undefined") {
+  useEffect(() => {
     const originalError = console.error;
     console.error = (...args) => {
-      if (args[0]?.includes?.("defaultProps")) return;
+      // Hii inaficha tu onyo la recharts la defaultProps ambalo halina madhara
+      if (typeof args[0] === 'string' && args[0].includes("defaultProps")) return;
       originalError(...args);
     };
-  }
-
+    return () => {
+      console.error = originalError; // Rudisha console asili component ikifungwa
+    };
+  }, []);
+ 
   return (
     <ResponsiveContainer width="100%" height="90%">
       <BarChart width={500} height={300} data={data} barSize={20}>

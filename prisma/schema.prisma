@@ -56,9 +56,10 @@ model Teacher {
   birthday  DateTime
 
   subjects Subject[]
+  notes    Note[]
   lessons  Lesson[]
   classes  Class[]
-  exams     Exam[]
+  exams    Exam[]
 }
 
 model Parent {
@@ -95,10 +96,11 @@ model Class {
 
   lessons       Lesson[]
   students      Student[]
+  notes         Note[]
   events        Event[]
   announcements Announcement[]
   messages      Message[]
-  exams Exam[]
+  exams         Exam[]
 
   @@index([gradeId])
   @@index([supervisorId])
@@ -110,7 +112,8 @@ model Subject {
 
   teachers Teacher[]
   lessons  Lesson[]
-  exams  Exam[]
+  exams    Exam[]
+  notes    Note[]
 
   topics    Topic[]
   questions Question[]
@@ -139,33 +142,120 @@ model Lesson {
   @@index([subjectId])
 }
 
+model Note {
+  id          Int     @id @default(autoincrement())
+  title       String
+  description String?
+  fileUrl     String 
+  fileType    String 
+  isPublic    Boolean @default(false)
+  thumbnailUrl String?
+  duration    Int?    // seconds — for video/audio
+  fileSize    BigInt? // bytes
+  tags        String[] // for search
+  viewCount   Int     @default(0)
+
+  sourceId  Int?
+  source    NoteSource? @relation(fields: [sourceId], references: [id])
+  subjectId Int
+  subject   Subject  @relation(fields: [subjectId], references: [id])
+  classId   Int?
+  class     Class?   @relation(fields: [classId], references: [id])
+  teacherId String?
+  teacher   Teacher? @relation(fields: [teacherId], references: [id])
+
+  completedBy UserProgress[]
+  aiSummary   NoteAISummary?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([subjectId])
+  @@index([classId])
+  @@index([teacherId])
+  @@index([fileType])
+  @@index([isPublic])
+}
+
+model NoteAISummary {
+  id          Int      @id @default(autoincrement())
+  noteId      Int      @unique
+  note        Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  summary     String   // AI-generated summary
+  keyPoints   String[] // bullet points
+  difficulty  String   // "beginner" | "intermediate" | "advanced"
+  estimatedReadTime Int // minutes
+  generatedAt DateTime @default(now())
+  model       String   // which AI model generated this
+}
+
+model NoteSource {
+  id          Int        @id @default(autoincrement())
+  name        String     // "Google Drive 1", "YouTube", "Cloudinary", etc.
+  type        SourceType
+  config      Json       // stores credentials/folder IDs (encrypted at rest)
+  isActive    Boolean    @default(true)
+  usedBytes   BigInt     @default(0)
+  maxBytes    BigInt?    // null = unlimited
+  priority    Int        @default(0) // fallback order — lower = preferred
+  createdAt   DateTime   @default(now())
+  notes       Note[]
+
+  @@index([type])
+  @@index([priority])
+}
+
+enum SourceType {
+  CLOUDINARY
+  SUPABASE_STORAGE
+  GOOGLE_DRIVE
+  YOUTUBE
+  EXTERNAL_URL
+}
+
+
+model UserProgress {
+  id           Int      @id @default(autoincrement())
+  userId       String
+  noteId       Int
+  note         Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  isLearned    Boolean  @default(false)
+  lastRead     DateTime @default(now())
+  timeSpent    Int      @default(0)  // seconds
+  progress     Int      @default(0)  // 0-100 percentage (for video/PDF scroll)
+  sessionCount Int      @default(0)  // how many times opened
+
+  @@unique([userId, noteId])
+  @@index([userId])
+  @@index([noteId])
+}
+
 model Exam {
   id          Int            @id @default(autoincrement())
   title       String
   description String?
   startTime   DateTime
   endTime     DateTime
-  duration           Int? 
+  duration    Int?
   visibility  ExamVisibility @default(PRIVATE)
   lessonId    Int?
-  lesson      Lesson?         @relation(fields: [lessonId], references: [id])
-  subjectId          Int?     
-  subject            Subject? @relation(fields: [subjectId], references: [id])
+  lesson      Lesson?        @relation(fields: [lessonId], references: [id])
+  subjectId   Int?
+  subject     Subject?       @relation(fields: [subjectId], references: [id])
   classId     Int?
-  class       Class?   @relation(fields: [classId], references: [id])
+  class       Class?         @relation(fields: [classId], references: [id])
   questions   ExamQuestion[]
   resources   ExamResource[]
   results     Result[]
-  teacherId   String? 
-  teacher     Teacher?  @relation(fields: [teacherId], references: [id])
+  teacherId   String?
+  teacher     Teacher?       @relation(fields: [teacherId], references: [id])
 
-  requiresProctoring Boolean  @default(false)
-  shuffleQuestions Boolean  @default(true)
-  shuffleChoices   Boolean  @default(true)
-  showResults Boolean @default(false)
-  passingScore       Int              @default(50)
-  maxAttempts        Int              @default(1)
-  isPublic           Boolean          @default(false)
+  requiresProctoring Boolean @default(false)
+  shuffleQuestions   Boolean @default(true)
+  shuffleChoices     Boolean @default(true)
+  showResults        Boolean @default(false)
+  passingScore       Int     @default(50)
+  maxAttempts        Int     @default(1)
+  isPublic           Boolean @default(false)
 
   @@index([lessonId])
   @@index([visibility])
@@ -283,10 +373,10 @@ model Assignment {
 }
 
 model Result {
-  id    Int @id @default(autoincrement())
-  score Int
+  id        Int      @id @default(autoincrement())
+  score     Int
   createdAt DateTime @default(now())
-  remarks  String?
+  remarks   String?
 
   examId       Int?
   exam         Exam?       @relation(fields: [examId], references: [id])

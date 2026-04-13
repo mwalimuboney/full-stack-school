@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import Image from "next/image";
 import Link from "next/link";
-import { SignOutButton } from "@clerk/nextjs"; 
+import { LogoutButton } from "./LogoutButton"; 
 
 const menuItems = [
   {
@@ -80,6 +80,13 @@ const menuItems = [
         visible: ["admin", "teacher", "student", "parent"],
       },
       {
+        icon: "/note.png",
+        label: "Notes",
+        href: "/list/notes",
+        visible: ["admin", "teacher", "student"],
+      },
+
+      {
         icon: "/message.png",
         label: "Messages",
         href: "/list/messages",
@@ -121,14 +128,8 @@ const menuItems = [
 const Menu = async () => {
   const { sessionClaims, userId } = await auth();
   
-  // Temporary fallback until all users have role in publicMetadata
-  let role = (sessionClaims?.metadata as { role?: string })?.role;
-  
-  if (!role && userId) {
-    const { currentUser } = await import("@clerk/nextjs/server");
-    const user = await currentUser();
-    role = (user?.unsafeMetadata?.role as string) ?? "guest";
-  }
+  const role = (sessionClaims?.metadata as { role?: string })?.role || "guest";
+
   return (
     <div className="mt-4 text-sm">
       {menuItems.map((i) => (
@@ -140,14 +141,7 @@ const Menu = async () => {
             if (!item.visible.includes(role  ?? "guest")) return null; 
 
             if (item.label === "Logout") {
-              return (
-                <SignOutButton key={item.label}>
-  <div className="flex items-center justify-center lg:justify-start gap-4 text-gray-500 py-2 md:px-2 rounded-md hover:bg-lamaSkyLight cursor-pointer">
-    <Image src={item.icon} alt="" width={20} height={20} />
-    <span className="hidden lg:block">{item.label}</span>
-  </div>
-</SignOutButton>
-              );
+              return <LogoutButton key={item.label} />;
             }
 
               return (

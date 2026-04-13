@@ -53,7 +53,8 @@ export default async function SingleExamPage({
 
   if (!exam) notFound();
 
-  const isTeacher = role === "admin" || role === "teacher";
+  
+  const isTeacher = role && ["admin", "teacher"].includes(role);
   const totalMarks = exam.questions.reduce((sum, q) => sum + (q.marks || 1), 0);
   
   // Date formatting for Kenya (DD/MM/YYYY)

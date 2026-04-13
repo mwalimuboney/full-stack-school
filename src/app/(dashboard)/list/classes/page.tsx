@@ -13,42 +13,14 @@ type ClassList = Class & { supervisor: Teacher };
 const ClassListPage = async ({
   searchParams,
 }: {
-  searchParams: { [key: string]: string | undefined };
+    searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) => {
 
 const { sessionClaims } = await auth();
 const role = (sessionClaims?.metadata as { role?: string })?.role;
+const resolvedSearchParams = await searchParams;
 
 
-const columns = [
-  {
-    header: "Class Name",
-    accessor: "name",
-  },
-  {
-    header: "Capacity",
-    accessor: "capacity",
-    className: "hidden md:table-cell",
-  },
-  {
-    header: "Grade",
-    accessor: "grade",
-    className: "hidden md:table-cell",
-  },
-  {
-    header: "Supervisor",
-    accessor: "supervisor",
-    className: "hidden md:table-cell",
-  },
-  ...(role === "admin"
-    ? [
-        {
-          header: "Actions",
-          accessor: "action",
-        },
-      ]
-    : []),
-];
 
 const renderRow = (item: ClassList) => (
   <tr
@@ -74,9 +46,9 @@ const renderRow = (item: ClassList) => (
   </tr>
 );
 
-  const { page, ...queryParams } = searchParams;
+  const { page, ...queryParams } = resolvedSearchParams;
 
-  const p = page ? parseInt(page) : 1;
+  const p = page ? parseInt(page as string) : 1;
 
   // URL PARAMS CONDITION
 
@@ -87,10 +59,10 @@ const renderRow = (item: ClassList) => (
       if (value !== undefined) {
         switch (key) {
           case "supervisorId":
-            query.supervisorId = value;
+            query.supervisorId = value as string;
             break;
           case "search":
-            query.name = { contains: value, mode: "insensitive" };
+            query.name = { contains: value as string, mode: "insensitive" };
             break;
           default:
             break;
@@ -110,6 +82,38 @@ const renderRow = (item: ClassList) => (
     }),
     prisma.class.count({ where: query }),
   ]);
+
+    
+  const columns = [
+    {
+      header: "Class Name",
+      accessor: "name",
+    },
+    {
+      header: "Capacity",
+      accessor: "capacity",
+      className: "hidden md:table-cell",
+    },
+    {
+      header: "Grade",
+      accessor: "grade",
+      className: "hidden md:table-cell",
+    },
+    {
+      header: "Supervisor",
+      accessor: "supervisor",
+      className: "hidden md:table-cell",
+    },
+    ...(role === "admin"
+      ? [
+          {
+            header: "Actions",
+            accessor: "action",
+          },
+        ]
+      : []),
+  ];
+  
 
   return (
     <div className="bg-white p-4 rounded-md flex-1 m-4 mt-0">
