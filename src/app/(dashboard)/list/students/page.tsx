@@ -16,10 +16,11 @@ type StudentList = Student & { class: Class };
 const StudentListPage = async ({
   searchParams,
 }: {
-  searchParams: { [key: string]: string | undefined };
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) => {
   const { sessionClaims } = await auth();
   const role = (sessionClaims?.metadata as { role?: string })?.role;
+  const resolvedSearchParams = await searchParams;
 
   const columns = [
     {
@@ -96,9 +97,9 @@ const StudentListPage = async ({
     </tr>
   );
 
-  const { page, ...queryParams } = searchParams;
+  const { page, ...queryParams } = resolvedSearchParams;
 
-  const p = page ? parseInt(page) : 1;
+  const p = page ? parseInt(page as string) : 1;
 
   // URL PARAMS CONDITION
 
@@ -112,13 +113,13 @@ const StudentListPage = async ({
             query.class = {
               lessons: {
                 some: {
-                  teacherId: value,
+                  teacherId: value as string,
                 },
               },
             };
             break;
           case "search":
-            query.name = { contains: value, mode: "insensitive" };
+            query.name = { contains: value as string, mode: "insensitive" };
             break;
           default:
             break;

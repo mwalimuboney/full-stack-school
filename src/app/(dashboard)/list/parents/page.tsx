@@ -6,6 +6,7 @@ import prisma from "@/lib/prisma";
 import { ITEM_PER_PAGE } from "@/lib/settings";
 import { Parent, Prisma, Student } from "@prisma/client";
 import Image from "next/image";
+import TableSort from "@/components/TableSort";
 
 import { auth } from "@clerk/nextjs/server";
 
@@ -14,11 +15,12 @@ type ParentList = Parent & { students: Student[] };
 const ParentListPage = async ({
   searchParams,
 }: {
-  searchParams: { [key: string]: string | undefined };
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) => {
 
 const { sessionClaims } = await auth();
 const role = (sessionClaims?.metadata as { role?: string })?.role;
+const resolvedSearchParams = await searchParams;
 
 
 const columns = [
@@ -80,9 +82,9 @@ const renderRow = (item: ParentList) => (
   </tr>
 );
 
-  const { page, ...queryParams } = searchParams;
+  const { page, ...queryParams } = resolvedSearchParams;
 
-  const p = page ? parseInt(page) : 1;
+  const p = page ? parseInt(page as string) : 1;
 
   // URL PARAMS CONDITION
 
@@ -93,7 +95,7 @@ const renderRow = (item: ParentList) => (
       if (value !== undefined) {
         switch (key) {
           case "search":
-            query.name = { contains: value, mode: "insensitive" };
+            query.name = { contains: value as string, mode: "insensitive" };
             break;
           default:
             break;
@@ -124,6 +126,7 @@ const renderRow = (item: ParentList) => (
           <div className="flex items-center gap-4 self-end">
             <button className="w-8 h-8 flex items-center justify-center rounded-full bg-lamaYellow">
               <Image src="/filter.png" alt="" width={14} height={14} />
+              <TableSort />
             </button>
             <button className="w-8 h-8 flex items-center justify-center rounded-full bg-lamaYellow">
               <Image src="/sort.png" alt="" width={14} height={14} />

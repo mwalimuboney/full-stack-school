@@ -3,7 +3,7 @@ import { routeAccessMap } from "./lib/settings";
 import { NextResponse } from "next/server";
 
 const isPublicRoute = createRouteMatcher(["/"]);
-const isAuthRoute = createRouteMatcher(["/sign-in(.*)", "/sign-up(.*)"]);
+const isAuthRoute = createRouteMatcher(["/sign-in(.*)", "/sign-up(.*)", "/forgot-password(.*)"]);
 
 const matchers = Object.keys(routeAccessMap).map((route) => ({
   matcher: createRouteMatcher([route]),

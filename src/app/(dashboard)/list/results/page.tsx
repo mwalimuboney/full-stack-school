@@ -26,12 +26,13 @@ type ResultList = {
 const ResultListPage = async ({
   searchParams,
 }: {
-  searchParams: { [key: string]: string | undefined };
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) => {
 
 const { userId, sessionClaims } = await auth();
 const role = (sessionClaims?.metadata as { role?: string })?.role;
 const currentUserId = userId;
+const resolvedSearchParams = await searchParams;
 
 
 const columns = [
@@ -106,9 +107,9 @@ const renderRow = (item: ResultList) => (
   </tr>
 );
 
-  const { page, ...queryParams } = searchParams;
+  const { page, ...queryParams } = resolvedSearchParams;
 
-  const p = page ? parseInt(page) : 1;
+  const p = page ? parseInt(page as string) : 1;
 
   // URL PARAMS CONDITION
 
@@ -119,12 +120,12 @@ const renderRow = (item: ResultList) => (
       if (value !== undefined) {
         switch (key) {
           case "studentId":
-            query.studentId = value;
+            query.studentId = value as string;
             break;
           case "search":
             query.OR = [
-              { exam: { title: { contains: value, mode: "insensitive" } } },
-              { student: { name: { contains: value, mode: "insensitive" } } },
+              { exam: { title: { contains: value as string, mode: "insensitive" } } },
+              { student: { name: { contains: value as string, mode: "insensitive" } } },
             ];
             break;
           default:

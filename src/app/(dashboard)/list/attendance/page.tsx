@@ -5,6 +5,7 @@ import prisma from "@/lib/prisma";
 import { ITEM_PER_PAGE } from "@/lib/settings";
 import { Attendance, Prisma, Student, Lesson, Subject, Class } from "@prisma/client";
 import Image from "next/image";
+import { z } from "zod";
 
 // Defining the complex type for our include query
 type AttendanceList = Attendance & { 
@@ -18,10 +19,25 @@ type AttendanceList = Attendance & {
 const AttendanceListPage = async ({
   searchParams,
 }: {
-  searchParams: { [key: string]: string | undefined };
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) => {
-  const { page, ...queryParams } = await searchParams;
-  const p = page ? parseInt(page) : 1;
+
+  const querySchema = z.object({
+    page: z.string().optional(),
+    classId: z.string().optional(),
+    search: z.string().optional(),
+  });
+
+  const resolvedSearchParams = await searchParams;
+  const parsed = querySchema.safeParse(resolvedSearchParams);
+
+  if (!parsed.success) {
+    throw new Error("Invalid query params");
+  }
+
+  const { page, ...queryParams } =  parsed.data;
+  const p = page ? parseInt(page as string) : 1;
+
 
   // 1. URL Query Logic (Filters)
   const query: Prisma.AttendanceWhereInput = {};
@@ -31,10 +47,10 @@ const AttendanceListPage = async ({
       if (value !== undefined) {
         switch (key) {
           case "classId":
-            query.lesson = { classId: parseInt(value) };
+            query.lesson = { classId: parseInt(value as string) };
             break;
           case "search":
-            query.student = { name: { contains: value, mode: "insensitive" } };
+            query.student = { name: { contains: value as string, mode: "insensitive" } };
             break;
           default:
             break;

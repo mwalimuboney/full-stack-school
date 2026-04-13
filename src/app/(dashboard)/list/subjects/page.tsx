@@ -13,10 +13,11 @@ type SubjectList = Subject & { teachers: Teacher[] };
 const SubjectListPage = async ({
   searchParams,
 }: {
-  searchParams: { [key: string]: string | undefined };
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) => {
   const { sessionClaims } = await auth();
   const role = (sessionClaims?.metadata as { role?: string })?.role;
+  const resolvedSearchParams = await searchParams;
 
   const columns = [
     {
@@ -56,9 +57,9 @@ const SubjectListPage = async ({
     </tr>
   );
 
-  const { page, ...queryParams } = searchParams;
+  const { page, ...queryParams } = resolvedSearchParams;
 
-  const p = page ? parseInt(page) : 1;
+  const p = page ? parseInt(page as string) : 1;
 
   // URL PARAMS CONDITION
 
@@ -69,7 +70,7 @@ const SubjectListPage = async ({
       if (value !== undefined) {
         switch (key) {
           case "search":
-            query.name = { contains: value, mode: "insensitive" };
+            query.name = { contains: value as string, mode: "insensitive" };
             break;
           default:
             break;

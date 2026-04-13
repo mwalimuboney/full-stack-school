@@ -181,6 +181,15 @@ const LoginForm = () => {
           )}
         </button>
 
+        <div className="flex justify-end">
+          <span
+            onClick={() => router.push("/forgot-password")}
+            className="text-xs text-purple-600 cursor-pointer hover:underline"
+          >
+            Forgot password?
+          </span>
+        </div>
+
         <div className="text-xs text-gray-500 text-center mt-2">
           Don&apos;t have an account?{" "}
           <span

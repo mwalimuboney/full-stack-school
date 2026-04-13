@@ -25,8 +25,9 @@ const nextConfig = {
     serverActions: {
       bodySizeLimit: '10mb',
       allowedOrigins: [
-        'improved-capybara-g4vxwqq65449fgp9-3000.app.github.dev', // Your specific Codespace URL
-        'localhost:3000'
+        'improved-capybara-g4vxwqq65449fgp9-3000.app.github.dev', 
+        'localhost:3000',
+        '*.vercel.app',
       ],
     },
   },
